@@ -19,7 +19,7 @@ def load_family():
     """Læser family-filen (family.xlsx) lokalt."""
     return pd.read_excel("family.xlsx", engine="openpyxl")
 
-st.title("Streamlit App til Data Mapping")
+st.title("App til generereing af EY appendix 2")
 st.write("Indtast varenumre (ét varenummer per linje):")
 user_input = st.text_area("Varenumre", height=200)
 
