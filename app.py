@@ -1,27 +1,20 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
-import requests
 from openpyxl import load_workbook
 
-# Funktion til at hente template-filen fra GitHub
+# Læs template-filen lokalt
 @st.cache_data
 def load_template():
-    # Udskift nedenstående URL med den faktiske GitHub-URL for apendix2-template.xlsx
-    url = "https://raw.githubusercontent.com/din-bruger/din-repo/main/apendix2-template.xlsx"
-    r = requests.get(url)
-    return r.content  # returnerer binært indhold
+    with open("apendix2-template.xlsx", "rb") as f:
+        return f.read()
 
-# Funktion til at hente masterdata-filen fra GitHub
+# Læs masterdata-filen lokalt
 @st.cache_data
 def load_masterdata():
-    # Udskift nedenstående URL med den faktiske GitHub-URL for Muuto_Master_Data_CON_January_2025_DKK.xlsx
-    url = "https://raw.githubusercontent.com/din-bruger/din-repo/main/Muuto_Master_Data_CON_January_2025_DKK.xlsx"
-    r = requests.get(url)
-    return pd.read_excel(BytesIO(r.content))
+    return pd.read_excel("Muuto_Master_Data_CON_January_2025_DKK.xlsx", engine="openpyxl")
 
 st.title("Streamlit App til Data Mapping")
-
 st.write("Indtast varenumre (et varenummer per linje):")
 user_input = st.text_area("Varenumre", height=200)
 
@@ -29,11 +22,11 @@ if st.button("Start behandling"):
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    # Hent filer fra GitHub
+    # Hent de nødvendige filer
     template_content = load_template()
     masterdata_df = load_masterdata()
 
-    # Del brugerens input op i en liste og fjern tomme linjer
+    # Split inputtet i en liste af varenumre og fjern tomme linjer
     varenumre = [line.strip() for line in user_input.splitlines() if line.strip()]
     results = []
     unmatched = []
@@ -71,13 +64,13 @@ if st.button("Start behandling"):
             })
         else:
             unmatched.append(varenr)
-        progress_bar.progress((i+1)/total)
+        progress_bar.progress((i+1) / total)
     
-    # Indlæs template-filen med openpyxl
+    # Åbn template-filen med openpyxl
     wb = load_workbook(filename=BytesIO(template_content))
     ws = wb.active
 
-    # Skriv resultaterne i filen fra række 7 og kolonne B til I
+    # Indsæt resultaterne i template-filen fra række 7 (kolonnerne B til I)
     start_row = 7
     for idx, res in enumerate(results, start=start_row):
         ws[f"B{idx}"] = res["Product Series name"]
@@ -89,7 +82,7 @@ if st.button("Start behandling"):
         ws[f"H{idx}"] = res["Product Guarantee period [years]"]
         ws[f"I{idx}"] = res["List Price [your currency]"]
 
-    # Gem den udfyldte fil i en binær stream til download
+    # Gem den udfyldte fil til en BytesIO-strøm for download
     output = BytesIO()
     wb.save(output)
     output.seek(0)
