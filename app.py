@@ -3,15 +3,15 @@ import pandas as pd
 from io import BytesIO
 from openpyxl import load_workbook
 
-# Læs template-filen lokalt
 @st.cache_data
 def load_template():
+    # Læs template-filen lokalt
     with open("apendix2-template.xlsx", "rb") as f:
         return f.read()
 
-# Læs masterdata-filen lokalt
 @st.cache_data
 def load_masterdata():
+    # Læs masterdata-filen lokalt (brug engine=openpyxl for Excel-filer)
     return pd.read_excel("Muuto_Master_Data_CON_January_2025_DKK.xlsx", engine="openpyxl")
 
 st.title("Streamlit App til Data Mapping")
@@ -22,11 +22,11 @@ if st.button("Start behandling"):
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    # Hent de nødvendige filer
+    # Hent filer lokalt
     template_content = load_template()
     masterdata_df = load_masterdata()
 
-    # Split inputtet i en liste af varenumre og fjern tomme linjer
+    # Opdel input i en liste og fjern tomme linjer
     varenumre = [line.strip() for line in user_input.splitlines() if line.strip()]
     results = []
     unmatched = []
@@ -34,8 +34,8 @@ if st.button("Start behandling"):
     total = len(varenumre)
     for i, varenr in enumerate(varenumre):
         status_text.text(f"Behandler varenummer {i+1} af {total}")
-        # Antag, at masterdata indeholder varenummer i kolonnen "PRODUCT"
-        match = masterdata_df[masterdata_df["PRODUCT"] == varenr]
+        # Konverter både masterdata-værdien og input til string for at sikre korrekt match
+        match = masterdata_df[masterdata_df["PRODUCT"].astype(str) == varenr]
         if not match.empty:
             row = match.iloc[0]
             # Hent værdier fra masterdata
@@ -49,7 +49,7 @@ if st.button("Start behandling"):
             contract_price = row["CONTRACT PRICE"]
             list_price = f"{contract_price} DKK"
             
-            # For "Product Series name" er der ikke specificeret en kilde – sættes som tom
+            # Product Series name er ikke specificeret – derfor tom
             product_series_name = ""
             
             results.append({
@@ -64,14 +64,14 @@ if st.button("Start behandling"):
             })
         else:
             unmatched.append(varenr)
-        progress_bar.progress((i+1) / total)
-    
-    # Åbn template-filen med openpyxl
+        progress_bar.progress((i+1)/total)
+
+    # Åbn template-filen med openpyxl via en BytesIO-strøm
     wb = load_workbook(filename=BytesIO(template_content))
     ws = wb.active
 
-    # Indsæt resultaterne i template-filen fra række 7 (kolonnerne B til I)
-    start_row = 7
+    # Hvis overskrifterne ligger i række 7, så indsættes data fra række 8 og frem
+    start_row = 8
     for idx, res in enumerate(results, start=start_row):
         ws[f"B{idx}"] = res["Product Series name"]
         ws[f"C{idx}"] = res["Product Name"]
@@ -82,7 +82,7 @@ if st.button("Start behandling"):
         ws[f"H{idx}"] = res["Product Guarantee period [years]"]
         ws[f"I{idx}"] = res["List Price [your currency]"]
 
-    # Gem den udfyldte fil til en BytesIO-strøm for download
+    # Gem den udfyldte fil til download
     output = BytesIO()
     wb.save(output)
     output.seek(0)
