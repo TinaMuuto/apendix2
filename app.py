@@ -5,31 +5,31 @@ from openpyxl import load_workbook
 
 @st.cache_data
 def load_template():
-    """Læs template-filen lokalt."""
+    """Læser template-filen (apendix2-template.xlsx) lokalt."""
     with open("apendix2-template.xlsx", "rb") as f:
         return f.read()
 
 @st.cache_data
 def load_masterdata():
-    """Læs masterdata-filen lokalt (med engine='openpyxl')."""
+    """Læser masterdata-filen (Muuto_Master_Data_CON_January_2025_DKK.xlsx) lokalt."""
     return pd.read_excel("Muuto_Master_Data_CON_January_2025_DKK.xlsx", engine="openpyxl")
 
 st.title("Streamlit App til Data Mapping")
-st.write("Indtast varenumre (et varenummer per linje):")
+st.write("Indtast varenumre (ét varenummer per linje):")
 user_input = st.text_area("Varenumre", height=200)
 
 if st.button("Start behandling"):
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    # Hent filer
+    # Hent filerne
     template_content = load_template()
     masterdata_df = load_masterdata()
 
-    # Debug: vis masterdata kolonnenavne
+    # Debug: Vis masterdata-kolonner (så du kan tjekke, at kolonnenavne passer)
     st.write("Masterdata kolonner:", masterdata_df.columns.tolist())
 
-    # Opdel brugerens input i en liste og fjern tomme linjer
+    # Opdel brugerens input i en liste og fjern evt. tomme linjer
     varenumre = [line.strip() for line in user_input.splitlines() if line.strip()]
     results = []
     unmatched = []
@@ -38,34 +38,34 @@ if st.button("Start behandling"):
     for i, varenr in enumerate(varenumre):
         status_text.text(f"Behandler varenummer {i+1} af {total}")
 
-        # 1) Forsøg præcist match (konverter masterdata-værdier til string)
-        match = masterdata_df[masterdata_df["PRODUCT"].astype(str) == varenr]
+        # 1) Eksakt match på kolonnen "ITEM NO."
+        match = masterdata_df[masterdata_df["ITEM NO."].astype(str) == varenr]
 
-        # 2) Hvis ingen præcis match, så kig efter "alt før ' - '" (f.eks. "25936 - All colors")
+        # 2) Hvis ingen eksakt match, så prøv at splitte ved " - "
+        #    og sammenligne den første del med varenr (f.eks. "25936" i "25936 - All colors").
         if match.empty:
             partial_matches = masterdata_df[
-                masterdata_df["PRODUCT"]
-                .astype(str)
-                .apply(lambda x: x.split(" - ")[0] == varenr)
+                masterdata_df["ITEM NO."].astype(str).apply(
+                    lambda x: x.split(" - ")[0] == varenr
+                )
             ]
             if not partial_matches.empty:
-                # Hvis flere partial matches, tag den første
-                match = partial_matches.iloc[[0]]
+                match = partial_matches.iloc[[0]]  # Tag den første partial match
 
-        # Hvis vi fandt noget, tag første række
+        # Hvis vi har fundet et match, så hent data fra de andre kolonner
         if not match.empty:
             row = match.iloc[0]
-            # Map felterne i henhold til specifikationen
-            product_series_name = ""  # Intet angivet
-            product_name = row["PRODUCT"]  # Kolonne C
-            product_item_number = varenr   # Brugerens input
-            product_description = row["PRODUCT DESCRIPTION"]  # Kolonne K
-            manufacturing_country = row["COUNTRY OF ORIGIN"]  # Kolonne M
-            lead_time = row["LEAD TIME"]  # Kolonne AU
+            product_series_name = ""  # Ikke specificeret
+            # Bemærk: Tilpas disse kolonnenavne til din masterdata
+            product_name = row["PRODUCT"]  # Hvis "PRODUCT" ligger i kolonne D, fx
+            product_item_number = varenr
+            product_description = row["PRODUCT DESCRIPTION"]
+            manufacturing_country = row["COUNTRY OF ORIGIN"]
+            lead_time = row["LEAD TIME"]
             if str(lead_time).strip() == "-":
                 lead_time = "Ready to ship"
-            warranty = row["WARRANTY"]  # Kolonne AQ
-            contract_price = row["CONTRACT PRICE"]  # Kolonne AV
+            warranty = row["WARRANTY"]
+            contract_price = row["CONTRACT PRICE"]
             list_price = f"{contract_price} DKK"
             
             results.append({
@@ -83,15 +83,15 @@ if st.button("Start behandling"):
 
         progress_bar.progress((i+1) / total)
 
-    # Hvis der ikke blev fundet nogen matches i det hele taget
+    # Hvis intet blev matchet, giv en fejl
     if not results:
-        st.error("Ingen matches fundet. Tjek at de indtastede varenumre stemmer overens med data i masterdata.")
+        st.error("Ingen matches fundet. Tjek at de indtastede varenumre findes i masterdata.")
     else:
-        # Åbn template-filen og indsæt data
+        # Åbn template-filen med openpyxl
         wb = load_workbook(filename=BytesIO(template_content))
         ws = wb.active
 
-        # Overskrifter i række 7 => indsæt data fra række 8 og frem
+        # Antag at overskrifterne ligger i B7 til I7 => data starter i række 8
         start_row = 8
         for idx, res in enumerate(results, start=start_row):
             ws[f"B{idx}"] = res["Product Series name"]
@@ -103,7 +103,7 @@ if st.button("Start behandling"):
             ws[f"H{idx}"] = res["Product Guarantee period [years]"]
             ws[f"I{idx}"] = res["List Price [your currency]"]
 
-        # Gem den udfyldte fil i en BytesIO-strøm
+        # Gem den udfyldte fil til download
         output = BytesIO()
         wb.save(output)
         output.seek(0)
@@ -115,7 +115,7 @@ if st.button("Start behandling"):
             file_name="udfyldt_template.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-    
+
     if unmatched:
-        st.warning("Følgende varenumre blev ikke fundet i masterdata (hverken som eksakt match eller partial match):")
+        st.warning("Følgende varenumre blev ikke fundet i masterdata:")
         st.text("\n".join(unmatched))
